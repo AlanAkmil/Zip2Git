@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ZIP2GIT — Push tanpa git</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0d0f;
+    --panel: #14171a;
+    --term: #05070a;
+    --green: #39ff88;
+    --amber: #ffb020;
+    --red: #ff5c5c;
+    --text: #e8e8e8;
+    --dim: #7a8288;
+    --border: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    background-image: linear-gradient(rgba(57,255,136,0.03) 1px, transparent 1px),
+                       linear-gradient(90deg, rgba(57,255,136,0.03) 1px, transparent 1px);
+    background-size: 28px 28px;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; background: var(--green); border-bottom: 4px solid var(--border);
+    font-weight: 800; font-size: 0.75rem; letter-spacing: 1px; text-transform: uppercase; color: #000;
+  }
+  .topbar .blink { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  header.hero {
+    margin: 24px 0; padding: 26px 20px; background: var(--panel);
+    border: 4px solid var(--border); box-shadow: 8px 8px 0 var(--green);
+  }
+  h1 { margin: 0; font-size: 2.2rem; font-weight: 800; letter-spacing: -1px; text-transform: uppercase; }
+  h1 span { color: var(--green); }
+  .sub { margin-top: 10px; color: var(--dim); font-size: 0.85rem; line-height: 1.5; }
+
+  .card {
+    background: var(--panel); border: 4px solid var(--border); box-shadow: 6px 6px 0 var(--amber);
+    padding: 20px; margin-bottom: 20px;
+  }
+  .card h2 {
+    margin: 0 0 14px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--amber); display: flex; align-items: center; gap: 8px;
+  }
+  .card h2::before { content: "$"; color: var(--green); }
+
+  label { display: block; font-size: 0.75rem; color: var(--dim); margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  label:first-of-type { margin-top: 0; }
+  input[type="text"], input[type="password"] {
+    width: 100%; padding: 12px; background: var(--term); color: var(--green);
+    border: 3px solid var(--border); font-family: inherit; font-size: 0.9rem;
+  }
+  input:focus { outline: none; box-shadow: 4px 4px 0 var(--green); }
+
+  .mode-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+  .mode-btn {
+    flex: 1; padding: 10px; background: var(--term); color: var(--dim); border: 3px solid var(--border);
+    font-family: inherit; font-weight: 700; font-size: 0.75rem; cursor: pointer; text-transform: uppercase;
+  }
+  .mode-btn.active { background: var(--green); color: #000; }
+
+  .check-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 0.8rem; color: var(--dim); }
+  .check-row input { width: auto; }
+
+  .dropzone {
+    margin-top: 6px; border: 3px dashed var(--dim); padding: 30px 16px; text-align: center;
+    color: var(--dim); font-size: 0.85rem; cursor: pointer; transition: border-color .15s, color .15s;
+  }
+  .dropzone.active { border-color: var(--green); color: var(--green); }
+  .dropzone strong { color: var(--text); }
+  .filelist { margin-top: 10px; font-size: 0.75rem; color: var(--dim); max-height: 120px; overflow-y: auto; }
+
+  .push-btn {
+    width: 100%; padding: 16px; margin-top: 18px; background: var(--green); color: #000;
+    border: 3px solid var(--border); font-family: inherit; font-weight: 800; font-size: 0.9rem;
+    text-transform: uppercase; letter-spacing: 1px; cursor: pointer; box-shadow: 5px 5px 0 #fff;
+  }
+  .push-btn:active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 #fff; }
+  .push-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .hint { font-size: 0.72rem; color: var(--dim); margin-top: 8px; line-height: 1.5; }
+  .hint a { color: var(--green); }
+
+  .terminal {
+    background: var(--term); border: 4px solid var(--border); box-shadow: 6px 6px 0 var(--red);
+    padding: 14px 16px; height: 260px; overflow-y: auto; font-size: 0.78rem; line-height: 1.7;
+  }
+  .terminal .line { white-space: pre-wrap; word-break: break-all; }
+  .line.ok { color: var(--green); }
+  .line.warn { color: var(--amber); }
+  .line.err { color: var(--red); }
+  .line.dim { color: var(--dim); }
+  .line.plain { color: var(--text); }
+  .cursor { display: inline-block; width: 8px; background: var(--green); animation: blink 1s steps(1) infinite; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span>ZIP2GIT<span class="blink">_</span></span>
+  <span>NO TERMINAL NEEDED</span>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <h1>ZIP<span>2</span>GIT</h1>
+    <p class="sub">Upload zip project lo, langsung ke-push ke GitHub. Gak perlu install git, gak perlu buka terminal. Jalan 100% di browser lo — token GitHub gak pernah dikirim ke server manapun selain langsung ke api.github.com.</p>
+  </header>
+
+  <div class="card">
+    <h2>Personal Access Token</h2>
+    <label for="token">Token GitHub (scope: repo)</label>
+    <input type="password" id="token" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" />
+    <p class="hint">Belum punya? Buka <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener">github.com/settings/tokens/new</a> → centang scope <strong>repo</strong> → Generate → copy tokennya ke sini. Token cuma dipakai di HP lo saat ini juga, gak disimpan di mana-mana.</p>
+  </div>
+
+  <div class="card">
+    <h2>Target Repo</h2>
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="modeNew" type="button">Bikin repo baru</button>
+      <button class="mode-btn" id="modeExisting" type="button">Push ke repo yang udah ada</button>
+    </div>
+
+    <div id="newRepoFields">
+      <label for="repoName">Nama repo baru</label>
+      <input type="text" id="repoName" placeholder="cctvhidaka" />
+      <div class="check-row">
+        <input type="checkbox" id="isPrivate" />
+        <label for="isPrivate" style="margin:0; text-transform:none; letter-spacing:0;">Bikin private</label>
+      </div>
+    </div>
+
+    <div id="existingRepoFields" style="display:none;">
+      <label for="ownerRepo">owner/nama-repo</label>
+      <input type="text" id="ownerRepo" placeholder="AlanAkmil/cctvhidaka" />
+      <p class="hint">File yang namanya sama bakal di-overwrite, sisanya ditambahin.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Project Zip</h2>
+    <div class="dropzone" id="dropzone">
+      <div><strong>Tap buat pilih file</strong> atau drop zip di sini</div>
+      <input type="file" id="fileInput" accept=".zip" style="display:none;" />
+    </div>
+    <div class="filelist" id="fileList"></div>
+
+    <button class="push-btn" id="pushBtn" disabled>Push ke GitHub</button>
+  </div>
+
+  <div class="card">
+    <h2>Console</h2>
+    <div class="terminal" id="terminal">
+      <div class="line dim">// log push bakal muncul di sini<span class="cursor">&nbsp;</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const modeNewBtn = document.getElementById('modeNew');
+const modeExistingBtn = document.getElementById('modeExisting');
+const newRepoFields = document.getElementById('newRepoFields');
+const existingRepoFields = document.getElementById('existingRepoFields');
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileListEl = document.getElementById('fileList');
+const pushBtn = document.getElementById('pushBtn');
+const terminal = document.getElementById('terminal');
+
+let mode = 'new';
+let zipFile = null;
+
+modeNewBtn.onclick = () => {
+  mode = 'new';
+  modeNewBtn.classList.add('active');
+  modeExistingBtn.classList.remove('active');
+  newRepoFields.style.display = 'block';
+  existingRepoFields.style.display = 'none';
+};
+modeExistingBtn.onclick = () => {
+  mode = 'existing';
+  modeExistingBtn.classList.add('active');
+  modeNewBtn.classList.remove('active');
+  newRepoFields.style.display = 'none';
+  existingRepoFields.style.display = 'block';
+};
+
+dropzone.onclick = () => fileInput.click();
+dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add('active'); };
+dropzone.ondragleave = () => dropzone.classList.remove('active');
+dropzone.ondrop = (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('active');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+};
+fileInput.onchange = () => { if (fileInput.files.length) handleFile(fileInput.files[0]); };
+
+function handleFile(file) {
+  if (!file.name.endsWith('.zip')) {
+    fileListEl.innerHTML = '<span style="color:var(--red)">File harus .zip</span>';
+    return;
+  }
+  zipFile = file;
+  fileListEl.innerHTML = `Terpilih: <strong style="color:var(--green)">${file.name}</strong> (${(file.size/1024).toFixed(1)} KB)`;
+  pushBtn.disabled = false;
+}
+
+function log(text, cls) {
+  const el = document.createElement('div');
+  el.className = 'line ' + (cls || 'plain');
+  el.textContent = text;
+  terminal.appendChild(el);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function toBase64(uint8) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < uint8.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, uint8.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+async function ghFetch(url, token, opts) {
+  const res = await fetch(url, {
+    ...opts,
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Accept': 'application/vnd.github+json',
+      ...(opts && opts.headers ? opts.headers : {})
+    }
+  });
+  return res;
+}
+
+pushBtn.onclick = async () => {
+  terminal.innerHTML = '';
+  const token = document.getElementById('token').value.trim();
+
+  if (!token) { log('✗ token GitHub kosong.', 'err'); return; }
+  if (!zipFile) { log('✗ belum pilih file zip.', 'err'); return; }
+
+  pushBtn.disabled = true;
+  pushBtn.textContent = 'PUSHING...';
+
+  try {
+    log('$ whoami', 'dim');
+    const meRes = await ghFetch('https://api.github.com/user', token);
+    if (!meRes.ok) throw new Error('Token gak valid atau expired (HTTP ' + meRes.status + ')');
+    const me = await meRes.json();
+    log('✓ login sebagai ' + me.login, 'ok');
+
+    let owner, repo;
+
+    if (mode === 'new') {
+      repo = document.getElementById('repoName').value.trim();
+      if (!repo) throw new Error('nama repo kosong');
+      const isPrivate = document.getElementById('isPrivate').checked;
+      owner = me.login;
+
+      log('$ gh repo create ' + repo, 'dim');
+      const createRes = await ghFetch('https://api.github.com/user/repos', token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: repo, private: isPrivate })
+      });
+      if (createRes.status === 422) {
+        log('… repo udah ada, lanjut push ke situ', 'warn');
+      } else if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}));
+        throw new Error('gagal bikin repo: ' + (err.message || createRes.status));
+      } else {
+        log('✓ repo ' + owner + '/' + repo + ' dibuat', 'ok');
+      }
+    } else {
+      const val = document.getElementById('ownerRepo').value.trim();
+      if (!val.includes('/')) throw new Error('format harus owner/nama-repo');
+      [owner, repo] = val.split('/');
+      log('$ target repo ' + owner + '/' + repo, 'dim');
+    }
+
+    log('$ unzip ' + zipFile.name, 'dim');
+    const zip = await JSZip.loadAsync(zipFile);
+    const entries = Object.values(zip.files).filter(f => !f.dir);
+    log('✓ ' + entries.length + ' file ketemu di dalam zip', 'ok');
+
+    let done = 0;
+    for (const entry of entries) {
+      let path = entry.name;
+      // strip a single top-level wrapper folder, e.g. "cctvhidaka/app/page.js" -> "app/page.js"
+      const parts = path.split('/');
+      if (parts.length > 1) path = parts.slice(1).join('/');
+      if (!path) continue;
+
+      const content = await entry.async('uint8array');
+      const base64 = toBase64(content);
+      const apiPath = path.split('/').map(encodeURIComponent).join('/');
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${apiPath}`;
+
+      let sha;
+      const getRes = await ghFetch(url, token);
+      if (getRes.ok) {
+        const info = await getRes.json();
+        sha = info.sha;
+      }
+
+      const putRes = await ghFetch(url, token, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: sha ? 'update ' + path : 'add ' + path,
+          content: base64,
+          ...(sha ? { sha } : {})
+        })
+      });
+
+      done++;
+      if (putRes.ok) {
+        log(`✓ [${done}/${entries.length}] ${path}`, 'ok');
+      } else {
+        const err = await putRes.json().catch(() => ({}));
+        log(`✗ [${done}/${entries.length}] ${path} — ${err.message || putRes.status}`, 'err');
+      }
+    }
+
+    log('', 'dim');
+    log('✓ done. buka: https://github.com/' + owner + '/' + repo, 'ok');
+  } catch (e) {
+    log('✗ error: ' + e.message, 'err');
+  } finally {
+    pushBtn.disabled = false;
+    pushBtn.textContent = 'Push ke GitHub';
+  }
+};
+</script>
+
+</body>
+</html>
